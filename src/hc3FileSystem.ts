@@ -238,17 +238,20 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             if (!existing) {
                 // Create an empty file first, then write content into it
                 const created = await this.client.createFile(id, name);
-                await this.client.writeFile(id, { ...created, isOpen: true, content: contentStr });
+                await this.client.writeFile(id, { name: created.name, type: created.type, isMain: created.isMain, content: contentStr } as typeof created);
                 // Invalidate file list cache for this device
                 this._filesCache.delete(id);
                 this._fileMeta.delete(id);
                 this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
             } else {
-                // Preserve all existing metadata, only update content.
-                // isOpen must be true or the HC3 rejects the PUT with 403.
+                // Preserve existing metadata (name, type, isMain) but do NOT
+                // send isOpen — let the HC3 manage that flag itself.
+                // Sending isOpen:false caused 403 on some firmware; sending
+                // isOpen:true caused 403 on others. Omitting it is safest.
                 const meta = this._fileMeta.get(id)?.get(name) ?? existing;
-                await this.client.writeFile(id, { ...meta, isOpen: true, content: contentStr });
+                const putBody = { name: meta.name, type: meta.type, isMain: meta.isMain, content: contentStr };
+                await this.client.writeFile(id, putBody as typeof meta);
                 this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
             }
@@ -341,7 +344,7 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
 
         // Create the new file and write content into it
         const created = await this.client.createFile(id, newName);
-        await this.client.writeFile(id, { ...created, isOpen: true, content: srcFile.content ?? '' });
+        await this.client.writeFile(id, { name: created.name, type: created.type, isMain: created.isMain, content: srcFile.content ?? '' } as typeof created);
 
         // Delete the old file
         await this.client.deleteFile(id, oldName);

@@ -8,6 +8,7 @@ import { Hc3DecorationProvider } from './hc3Decorations';
 import { Hc3CodeLensProvider } from './hc3CodeLens';
 import { Hc3FileSearchProvider, Hc3TextSearchProvider } from './hc3SearchProviders';
 import { Hc3LogPoller } from './hc3LogPoller';
+import { Hc3BrowserProxy } from './hc3BrowserProxy';
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
@@ -16,6 +17,7 @@ let activeClient: Hc3Client | undefined;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let codeLensProvider: Hc3CodeLensProvider | undefined;
 let logPoller: Hc3LogPoller | undefined;
+let browserProxy: Hc3BrowserProxy | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -93,6 +95,17 @@ export function activate(context: vscode.ExtensionContext): void {
                 context.subscriptions.push(logPoller);
             }
             logPoller.start(client);
+
+            // ── Browser proxy ───────────────────────────────────────────────
+            const hc3Url = new URL(creds.baseUrl);
+            const hc3ProxyPort = hc3Url.port ? parseInt(hc3Url.port) : 80;
+            browserProxy = new Hc3BrowserProxy(
+                hc3Url.hostname,
+                hc3ProxyPort,
+                'Basic ' + Buffer.from(`${creds.user}:${creds.password}`).toString('base64')
+            );
+            await browserProxy.start();
+            context.subscriptions.push(browserProxy);
 
             // ── Connection polling ────────────────────────────────────────────
             if (pollTimer) { clearInterval(pollTimer); }
@@ -203,6 +216,8 @@ export function activate(context: vscode.ExtensionContext): void {
             provider = undefined;
             providerPromise = undefined;
             logPoller?.stop();
+            browserProxy?.stop();
+            browserProxy = undefined;
 
             vscode.window.showInformationMessage(
                 'HC3 credentials saved. Run "HC3: Connect" to open the filesystem.'
@@ -229,6 +244,8 @@ export function activate(context: vscode.ExtensionContext): void {
             activeClient = undefined;
             codeLensProvider = undefined;
             logPoller?.stop();
+            browserProxy?.stop();
+            browserProxy = undefined;
             if (pollTimer) { clearInterval(pollTimer); pollTimer = undefined; }
             statusBarItem.hide();
         }),
@@ -244,7 +261,6 @@ export function activate(context: vscode.ExtensionContext): void {
         }),
 
         vscode.commands.registerCommand('hc3vfs.openInBrowser', async (uri?: vscode.Uri) => {
-            // Can be invoked from explorer context (uri arg) or command palette (active editor)
             const target = uri ?? vscode.window.activeTextEditor?.document.uri;
             if (!target || target.scheme !== 'hc3') {
                 vscode.window.showWarningMessage('HC3: no HC3 file or folder selected.');
@@ -257,8 +273,13 @@ export function activate(context: vscode.ExtensionContext): void {
                 return;
             }
             const deviceId = m[1];
-            const host = target.authority;
-            const url = `http://${host}/mobile/devices/${deviceId}`;
+            if (!browserProxy) {
+                vscode.window.showWarningMessage('HC3: not connected. Run "HC3: Connect" first.');
+                return;
+            }
+            // Open via local reverse proxy — the proxy adds Basic Auth to every
+            // request so the browser never needs to handle credentials directly.
+            const url = browserProxy.urlFor(`/mobile/devices/${deviceId}`);
             await vscode.env.openExternal(vscode.Uri.parse(url));
         }),
 

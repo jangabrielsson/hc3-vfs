@@ -96,9 +96,9 @@ export class Hc3Client {
                     if (status >= 400) {
                         const hint =
                             status === 401 ? ' — check your credentials' :
-                            status === 403 ? ' — HC3 user lacks write permission (admin role required)' :
                             status === 404 ? ' — resource not found on HC3' : '';
-                        reject(new Error(`HC3 HTTP ${status}${hint}: ${raw}`));
+                        const body = raw ? `: ${raw}` : '';
+                        reject(new Error(`HC3 HTTP ${status}${hint}${body}`));
                         return;
                     }
                     try {

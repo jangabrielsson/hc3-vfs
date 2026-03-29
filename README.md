@@ -84,6 +84,7 @@ Add this to your workspace `.vscode/settings.json`:
 - **Creating new QuickApp devices** (new folders) is not supported — use the HC3 web interface
 - **No live refresh** — the HC3 has no push notifications. Use **HC3: Refresh** if you made changes outside VS Code
 - File names must be at least 3 characters and contain only `a-z`, `A-Z`, `0-9`
+- **"Preloaded files limit" warning** — VS Code indexes the virtual filesystem for search and IntelliSense. If you have many QuickApps you may see a warning that the 500-file preload limit has been reached. This is a VS Code limit; all files are still fully accessible, editable, and searchable. The warning can be safely ignored.
 
 ## Related
 

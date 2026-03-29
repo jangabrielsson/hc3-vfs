@@ -2,7 +2,7 @@
   "name": "hc3-vfs",
   "displayName": "Fibaro HC3 Virtual Filesystem",
   "description": "Browse and edit HC3 QuickApp Lua files directly in the VS Code Explorer via a virtual filesystem",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "GsonSoft-development",
   "author": "Jan Gabrielsson",
   "license": "MIT",
@@ -14,9 +14,19 @@
     "url": "https://github.com/jangabrielsson/hc3-vfs/issues"
   },
   "homepage": "https://github.com/jangabrielsson/hc3-vfs#readme",
-  "keywords": ["fibaro", "hc3", "quickapp", "lua", "home automation"],
-  "engines": { "vscode": "^1.80.0" },
-  "categories": ["Other"],
+  "keywords": [
+    "fibaro",
+    "hc3",
+    "quickapp",
+    "lua",
+    "home automation"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "galleryBanner": {
     "color": "#1a3878",
     "theme": "dark"

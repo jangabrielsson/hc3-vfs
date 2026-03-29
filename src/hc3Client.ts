@@ -25,16 +25,45 @@ export interface DebugMessage {
     message: string;
 }
 
+export interface ApiStats {
+    /** Total number of HTTP requests made since connect (or last reset). */
+    total: number;
+    /** Per-endpoint counts keyed as "METHOD /api/path" with numeric IDs normalised to {id}. */
+    byEndpoint: Record<string, number>;
+    /** Timestamp (Date) when stats were last reset. */
+    since: Date;
+}
+
+/** Normalise variable path segments so stats group nicely, e.g. /api/quickApp/42/files/main → /api/quickApp/{id}/files/{name} */
+function normaliseApiPath(raw: string): string {
+    return raw
+        .replace(/\/api\/quickApp\/\d+\/files\/[^?/]+/, '/api/quickApp/{id}/files/{name}')
+        .replace(/\/api\/quickApp\/\d+\/files/, '/api/quickApp/{id}/files')
+        .replace(/\/api\/quickApp\/export\/\d+/, '/api/quickApp/export/{id}')
+        .replace(/\/api\/devices\/\d+/, '/api/devices/{id}')
+        .replace(/\/api\/debugMessages.*/, '/api/debugMessages');
+}
+
 export class Hc3Client {
     private readonly authHeader: string;
     private readonly baseUrl: string;
+    private _stats: ApiStats = { total: 0, byEndpoint: {}, since: new Date() };
 
     constructor(baseUrl: string, user: string, password: string) {
         this.baseUrl = baseUrl;
         this.authHeader = 'Basic ' + Buffer.from(`${user}:${password}`).toString('base64');
     }
 
+    getStats(): Readonly<ApiStats> { return this._stats; }
+
+    resetStats(): void {
+        this._stats = { total: 0, byEndpoint: {}, since: new Date() };
+    }
+
     private request<T>(method: string, apiPath: string, body?: unknown): Promise<T> {
+        const key = `${method} ${normaliseApiPath(apiPath.split('?')[0])}`;
+        this._stats.total++;
+        this._stats.byEndpoint[key] = (this._stats.byEndpoint[key] ?? 0) + 1;
         return new Promise((resolve, reject) => {
             const url = new URL(this.baseUrl + apiPath);
             const isHttps = url.protocol === 'https:';
@@ -182,5 +211,22 @@ export class Hc3Client {
     /** Lightweight ping — just checks the HC3 is reachable */
     ping(): Promise<boolean> {
         return this.listQuickApps().then(() => true).catch(() => false);
+    }
+
+    /** Format current stats as a human-readable string for display. */
+    formatStats(): string {
+        const s = this._stats;
+        const age = Math.round((Date.now() - s.since.getTime()) / 1000);
+        const duration = age < 60 ? `${age}s` : age < 3600 ? `${Math.floor(age/60)}m ${age%60}s` : `${Math.floor(age/3600)}h ${Math.floor((age%3600)/60)}m`;
+        const lines = [
+            `Total API calls: ${s.total}  (since connect, ${duration} ago)`,
+            '',
+            'Calls by endpoint:',
+        ];
+        const sorted = Object.entries(s.byEndpoint).sort((a, b) => b[1] - a[1]);
+        for (const [endpoint, count] of sorted) {
+            lines.push(`  ${String(count).padStart(5)}  ${endpoint}`);
+        }
+        return lines.join('\n');
     }
 }

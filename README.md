@@ -8,12 +8,14 @@ Browse and edit Fibaro HC3 QuickApp Lua files directly in the VS Code Explorer �
 - **Open any `.lua` file** — content is fetched live from the HC3
 - **Save to HC3 on `⌘S`** — the file is written back via the HC3 REST API instantly
 - **Create new files** — new Lua files appear on the HC3 immediately
-- **Delete files** — removes the file from the HC3
+- **Delete files** — removes the file from the HC3 (the main file of a QuickApp cannot be deleted)
+- **Rename files** — rename a non-main Lua file by pressing F2 or right-clicking in the Explorer (implemented as create + delete)
 - **Rename QuickApp** — rename a device directly from VS Code (right-click the QuickApp folder)
 - **Export `.fqa`** — export a QuickApp as a `.fqa` archive (right-click the QuickApp folder)
 - **Open in HC3 Web UI** — jump to the HC3 device page in the browser (right-click the QuickApp folder)
 - **File & text search** — `Ctrl+P` quick-open and `Ctrl+Shift+F` Find in Files both search across all QuickApp files in the virtual filesystem
 - **HC3 Log output channel** — the *HC3 Log* output panel polls the HC3 debug log every few seconds and streams new entries as they arrive, so you can see QuickApp output and errors without leaving VS Code
+- **API traffic statistics** — run **HC3: Statistics** to see a breakdown of every API call made since connect, grouped by endpoint
 - **Credentials from `.env`** — reuses the same `HC3_URL`/`HC3_USER`/`HC3_PASSWORD` variables as [plua](https://github.com/jangabrielsson/plua), with a fallback to VS Code settings + SecretStorage
 
 ## Explorer tree example
@@ -71,6 +73,7 @@ HH:MM:SS [DEBUG] [QUICKAPP1234] your message here
 | `HC3: Open in HC3 Web UI` | Open the selected QuickApp in the HC3 browser UI |
 | `HC3: Export .fqa` | Export the selected QuickApp as a `.fqa` archive |
 | `HC3: Rename QuickApp` | Rename the selected QuickApp on the HC3 |
+| `HC3: Statistics` | Show a breakdown of API calls made since connect |
 
 `Open in HC3 Web UI`, `Export .fqa`, and `Rename QuickApp` are also available via right-click on a QuickApp folder in the Explorer.
 
@@ -100,7 +103,7 @@ Add this to your workspace `.vscode/settings.json`:
 
 ## Limitations
 
-- **File rename** is not supported (the HC3 REST API has no rename endpoint)
+- **Renaming the main file** is not supported — the HC3 API does not allow it
 - **Creating new QuickApp devices** (new folders) is not supported — use the HC3 web interface
 - **No live refresh** — the HC3 has no push notifications. Use **HC3: Refresh** if you made changes outside VS Code
 - File names must be at least 3 characters and contain only `a-z`, `A-Z`, `0-9`

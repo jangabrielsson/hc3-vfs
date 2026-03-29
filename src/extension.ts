@@ -328,6 +328,17 @@ export function activate(context: vscode.ExtensionContext): void {
                 vscode.window.showErrorMessage(`HC3 rename failed: ${msg}`);
             }
         }),
+
+        vscode.commands.registerCommand('hc3vfs.statistics', () => {
+            if (!activeClient) {
+                vscode.window.showWarningMessage('HC3: not connected. Run "HC3: Connect" first.');
+                return;
+            }
+            const text = activeClient.formatStats();
+            // Show in a new untitled document so it's easy to read and copy
+            vscode.workspace.openTextDocument({ content: text, language: 'plaintext' })
+                .then(doc => vscode.window.showTextDocument(doc, { preview: true, preserveFocus: false }));
+        }),
     );
 }
 

@@ -9,6 +9,11 @@ Browse and edit Fibaro HC3 QuickApp Lua files directly in the VS Code Explorer �
 - **Save to HC3 on `⌘S`** — the file is written back via the HC3 REST API instantly
 - **Create new files** — new Lua files appear on the HC3 immediately
 - **Delete files** — removes the file from the HC3
+- **Rename QuickApp** — rename a device directly from VS Code (right-click the QuickApp folder)
+- **Export `.fqa`** — export a QuickApp as a `.fqa` archive (right-click the QuickApp folder)
+- **Open in HC3 Web UI** — jump to the HC3 device page in the browser (right-click the QuickApp folder)
+- **File & text search** — `Ctrl+P` quick-open and `Ctrl+Shift+F` Find in Files both search across all QuickApp files in the virtual filesystem
+- **HC3 Log output channel** — the *HC3 Log* output panel polls the HC3 debug log every few seconds and streams new entries as they arrive, so you can see QuickApp output and errors without leaving VS Code
 - **Credentials from `.env`** — reuses the same `HC3_URL`/`HC3_USER`/`HC3_PASSWORD` variables as [plua](https://github.com/jangabrielsson/plua), with a fallback to VS Code settings + SecretStorage
 
 ## Explorer tree example
@@ -47,6 +52,14 @@ Run **HC3: Connect** from the Command Palette. An `HC3 — <host>` workspace fol
 
 Open any `.lua` file, make changes, and save — the file is written back to the HC3 immediately.
 
+### 4. Watch the log
+
+The **HC3 Log** output channel opens automatically on connect and streams new debug, warning, trace, and error entries from `/api/debugMessages` as they arrive. Each line is formatted as:
+
+```
+HH:MM:SS [DEBUG] [QUICKAPP1234] your message here
+```
+
 ## Commands
 
 | Command | Description |
@@ -54,6 +67,12 @@ Open any `.lua` file, make changes, and save — the file is written back to the
 | `HC3: Connect` | Open the HC3 filesystem in the Explorer |
 | `HC3: Configure Credentials` | Set HC3 host, username, and password |
 | `HC3: Refresh` | Clear the cache and reload the file tree |
+| `HC3: Disconnect` | Remove the HC3 workspace folder and stop polling |
+| `HC3: Open in HC3 Web UI` | Open the selected QuickApp in the HC3 browser UI |
+| `HC3: Export .fqa` | Export the selected QuickApp as a `.fqa` archive |
+| `HC3: Rename QuickApp` | Rename the selected QuickApp on the HC3 |
+
+`Open in HC3 Web UI`, `Export .fqa`, and `Rename QuickApp` are also available via right-click on a QuickApp folder in the Explorer.
 
 ## Settings
 
@@ -61,6 +80,7 @@ Open any `.lua` file, make changes, and save — the file is written back to the
 |---|---|---|
 | `hc3vfs.host` | `` | HC3 hostname or IP. Overridden by `HC3_URL` in `.env`. |
 | `hc3vfs.user` | `admin` | HC3 username. Overridden by `HC3_USER` in `.env`. |
+| `hc3vfs.logPollInterval` | `4` | How often (in seconds) to poll the HC3 debug log output channel. |
 
 Passwords are never stored in plain-text settings — they go to VS Code SecretStorage or are read from `.env`.
 

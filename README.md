@@ -46,6 +46,8 @@ HC3_PASSWORD=your-password
 
 Run the command **HC3: Configure Credentials** (`Ctrl+Shift+P` → `HC3: Configure Credentials`) and enter your HC3 host, username, and password. The password is stored securely in VS Code's SecretStorage.
 
+> **Note — precedence:** `.env` values always win over `HC3: Configure Credentials`. If you use plua and have `HC3_URL`/`HC3_USER`/`HC3_PASSWORD` in a workspace `.env` or `~/.env`, those credentials are used regardless of what you entered via the command. If writes fail with unexpected credentials, check for an existing `.env` file first.
+
 ### 2. Connect
 
 Run **HC3: Connect** from the Command Palette. An `HC3 — <host>` workspace folder will appear in the Explorer containing all your QuickApps.

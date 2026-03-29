@@ -1,0 +1,66 @@
+{
+  "name": "hc3-vfs",
+  "displayName": "Fibaro HC3 Virtual Filesystem",
+  "description": "Browse and edit HC3 QuickApp files directly in the VS Code Explorer",
+  "version": "0.1.0",
+  "publisher": "fibaro",
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onFileSystem:hc3",
+    "onCommand:hc3vfs.connect",
+    "onCommand:hc3vfs.configure",
+    "onCommand:hc3vfs.refresh"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hc3vfs.connect",
+        "title": "HC3: Connect",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.configure",
+        "title": "HC3: Configure Credentials",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.refresh",
+        "title": "HC3: Refresh",
+        "category": "HC3"
+      }
+    ],
+    "configuration": {
+      "title": "Fibaro HC3 VFS",
+      "properties": {
+        "hc3vfs.host": {
+          "type": "string",
+          "default": "",
+          "description": "HC3 hostname or IP address (e.g. 192.168.1.100). Overridden by HC3_URL in .env."
+        },
+        "hc3vfs.user": {
+          "type": "string",
+          "default": "admin",
+          "description": "HC3 username. Overridden by HC3_USER in .env."
+        }
+      }
+    },
+    "fileSystemProviders": [
+      {
+        "scheme": "hc3",
+        "authority": "*"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p .",
+    "watch": "tsc -watch -p .",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  }
+}

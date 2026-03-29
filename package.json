@@ -36,7 +36,11 @@
     "onFileSystem:hc3",
     "onCommand:hc3vfs.connect",
     "onCommand:hc3vfs.configure",
-    "onCommand:hc3vfs.refresh"
+    "onCommand:hc3vfs.refresh",
+    "onCommand:hc3vfs.disconnect",
+    "onCommand:hc3vfs.openInBrowser",
+    "onCommand:hc3vfs.exportFqa",
+    "onCommand:hc3vfs.renameDevice"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -55,8 +59,47 @@
         "command": "hc3vfs.refresh",
         "title": "HC3: Refresh",
         "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.disconnect",
+        "title": "HC3: Disconnect",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.openInBrowser",
+        "title": "HC3: Open in HC3 Web UI",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.exportFqa",
+        "title": "HC3: Export .fqa",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.renameDevice",
+        "title": "HC3: Rename QuickApp",
+        "category": "HC3"
       }
     ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "hc3vfs.openInBrowser",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "hc3vfs.exportFqa",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "group": "navigation@2"
+        },
+        {
+          "command": "hc3vfs.renameDevice",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "group": "navigation@3"
+        }
+      ]
+    },
     "configuration": {
       "title": "Fibaro HC3 VFS",
       "properties": {

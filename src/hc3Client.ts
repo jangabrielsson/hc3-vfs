@@ -116,4 +116,52 @@ export class Hc3Client {
             `/api/quickApp/${deviceId}/files/${encodeURIComponent(name)}`
         );
     }
+
+    /** GET /api/quickApp/export/{id} — export device as .fqa (returns raw Buffer) */
+    exportFqa(deviceId: number): Promise<Buffer> {
+        return new Promise((resolve, reject) => {
+            const url = new URL(this.baseUrl + `/api/quickApp/export/${deviceId}`);
+            const isHttps = url.protocol === 'https:';
+            const options: http.RequestOptions = {
+                hostname: url.hostname,
+                port: url.port ? parseInt(url.port, 10) : (isHttps ? 443 : 80),
+                path: url.pathname,
+                method: 'GET',
+                headers: { 'Authorization': this.authHeader, 'Accept': 'application/json' },
+            };
+            const transport = isHttps ? https : http;
+            const req = transport.request(options, (res) => {
+                const chunks: Buffer[] = [];
+                res.on('data', (chunk: Buffer) => chunks.push(chunk));
+                res.on('end', () => {
+                    const status = res.statusCode ?? 0;
+                    const buf = Buffer.concat(chunks);
+                    if (status >= 400) {
+                        reject(new Error(`HC3 HTTP ${status}: ${buf.toString('utf-8')}`));
+                    } else {
+                        resolve(buf);
+                    }
+                });
+            });
+            req.on('error', reject);
+            req.end();
+        });
+    }
+
+    /** PUT /api/devices/{id} — rename a QuickApp device */
+    renameDevice(deviceId: number, newName: string): Promise<void> {
+        return this.request<void>('PUT', `/api/devices/${deviceId}`, { name: newName });
+    }
+
+    /** GET /api/devices/{id} — get full device details including properties */
+    getDevice(deviceId: number): Promise<QaDevice & { properties: Record<string, unknown> }> {
+        return this.request<QaDevice & { properties: Record<string, unknown> }>(
+            'GET', `/api/devices/${deviceId}`
+        );
+    }
+
+    /** Lightweight ping — just checks the HC3 is reachable */
+    ping(): Promise<boolean> {
+        return this.listQuickApps().then(() => true).catch(() => false);
+    }
 }

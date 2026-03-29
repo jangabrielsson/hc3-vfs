@@ -1,11 +1,18 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getCredentials } from './credentials';
 import { Hc3Client } from './hc3Client';
 import { Hc3FileSystemProvider } from './hc3FileSystem';
+import { Hc3DecorationProvider } from './hc3Decorations';
+import { Hc3CodeLensProvider } from './hc3CodeLens';
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
 let statusBarItem: vscode.StatusBarItem;
+let activeClient: Hc3Client | undefined;
+let pollTimer: ReturnType<typeof setInterval> | undefined;
+let codeLensProvider: Hc3CodeLensProvider | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -28,6 +35,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
             // Smoke-test: will throw on bad credentials or unreachable host
             await client.listQuickApps();
+            activeClient = client;
+
+            const host = new URL(creds.baseUrl).hostname;
 
             const p = new Hc3FileSystemProvider(client);
             context.subscriptions.push(
@@ -36,9 +46,55 @@ export function activate(context: vscode.ExtensionContext): void {
                     isReadonly: false,
                 })
             );
+
+            // Register decoration provider
+            context.subscriptions.push(
+                vscode.window.registerFileDecorationProvider(new Hc3DecorationProvider(p))
+            );
+
+            // Save-status feedback in the status bar
+            let saveTimer: ReturnType<typeof setTimeout> | undefined;
+            p.onSaveResult = (uri, error) => {
+                if (saveTimer) { clearTimeout(saveTimer); }
+                if (error) {
+                    statusBarItem.text = `$(error) HC3 save failed`;
+                    statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.errorBackground');
+                } else {
+                    statusBarItem.text = `$(check) HC3 saved`;
+                    statusBarItem.backgroundColor = undefined;
+                    saveTimer = setTimeout(() => {
+                        statusBarItem.text = `$(plug) HC3 ${host}`;
+                        statusBarItem.backgroundColor = undefined;
+                    }, 3000);
+                }
+            };
+
             provider = p;
 
-            const host = new URL(creds.baseUrl).hostname;
+            // ── Connection polling ────────────────────────────────────────────
+            if (pollTimer) { clearInterval(pollTimer); }
+            pollTimer = setInterval(async () => {
+                if (!activeClient) { return; }
+                const ok = await activeClient.ping();
+                if (!ok) {
+                    statusBarItem.text = `$(warning) HC3 ${host} — offline`;
+                    statusBarItem.backgroundColor =
+                        new vscode.ThemeColor('statusBarItem.warningBackground');
+                } else if (statusBarItem.text.includes('offline')) {
+                    statusBarItem.text = `$(plug) HC3 ${host}`;
+                    statusBarItem.backgroundColor = undefined;
+                }
+            }, 30_000);
+            context.subscriptions.push({ dispose: () => { if (pollTimer) { clearInterval(pollTimer); } } });
+
+            // ── CodeLens provider ─────────────────────────────────────────────
+            codeLensProvider = new Hc3CodeLensProvider(() => activeClient);
+            context.subscriptions.push(
+                vscode.languages.registerCodeLensProvider(
+                    { scheme: 'hc3', language: 'lua' },
+                    codeLensProvider
+                )
+            );
             statusBarItem.text = `$(plug) HC3 ${host}`;
             statusBarItem.tooltip = `Connected to ${creds.baseUrl} — click to refresh`;
             statusBarItem.show();
@@ -129,12 +185,122 @@ export function activate(context: vscode.ExtensionContext): void {
             );
         }),
 
+        vscode.commands.registerCommand('hc3vfs.disconnect', () => {
+            const hc3Folders = (vscode.workspace.workspaceFolders ?? [])
+                .filter(f => f.uri.scheme === 'hc3');
+
+            if (hc3Folders.length === 0) {
+                vscode.window.showInformationMessage('HC3: no HC3 filesystem is currently connected.');
+                return;
+            }
+
+            for (const folder of hc3Folders) {
+                const idx = vscode.workspace.workspaceFolders!.indexOf(folder);
+                vscode.workspace.updateWorkspaceFolders(idx, 1);
+            }
+
+            // Reset provider so a subsequent Connect starts fresh
+            provider = undefined;
+            providerPromise = undefined;
+            activeClient = undefined;
+            codeLensProvider = undefined;
+            if (pollTimer) { clearInterval(pollTimer); pollTimer = undefined; }
+            statusBarItem.hide();
+        }),
+
         vscode.commands.registerCommand('hc3vfs.refresh', () => {
             if (provider) {
                 provider.refresh();
+                codeLensProvider?.invalidate();
                 vscode.window.showInformationMessage('HC3: filesystem cache cleared and refreshed.');
             } else {
                 vscode.window.showWarningMessage('HC3: not connected. Run "HC3: Connect" first.');
+            }
+        }),
+
+        vscode.commands.registerCommand('hc3vfs.openInBrowser', async (uri?: vscode.Uri) => {
+            // Can be invoked from explorer context (uri arg) or command palette (active editor)
+            const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+            if (!target || target.scheme !== 'hc3') {
+                vscode.window.showWarningMessage('HC3: no HC3 file or folder selected.');
+                return;
+            }
+            const parts = target.path.split('/').filter(Boolean);
+            const m = parts[0]?.match(/^(\d+)/);
+            if (!m) {
+                vscode.window.showWarningMessage('HC3: could not determine device ID from URI.');
+                return;
+            }
+            const deviceId = m[1];
+            const host = target.authority;
+            const url = `http://${host}/mobile/devices/${deviceId}`;
+            await vscode.env.openExternal(vscode.Uri.parse(url));
+        }),
+
+        vscode.commands.registerCommand('hc3vfs.exportFqa', async (uri?: vscode.Uri) => {
+            const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+            if (!target || target.scheme !== 'hc3') {
+                vscode.window.showWarningMessage('HC3: no HC3 file or folder selected.');
+                return;
+            }
+            if (!activeClient) {
+                vscode.window.showWarningMessage('HC3: not connected.');
+                return;
+            }
+            const parts   = target.path.split('/').filter(Boolean);
+            const m       = parts[0]?.match(/^(\d+)-(.+)/);
+            if (!m) { vscode.window.showWarningMessage('HC3: select a QuickApp folder to export.'); return; }
+            const deviceId = parseInt(m[1], 10);
+            const slug     = m[2];
+
+            const saveUri = await vscode.window.showSaveDialog({
+                defaultUri: vscode.Uri.file(path.join(require('os').homedir(), `${slug}.fqa`)),
+                filters: { 'Fibaro QuickApp': ['fqa'] },
+            });
+            if (!saveUri) { return; }
+
+            try {
+                const data = await activeClient.exportFqa(deviceId);
+                fs.writeFileSync(saveUri.fsPath, data);
+                vscode.window.showInformationMessage(`Exported ${slug}.fqa successfully.`);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`HC3 export failed: ${msg}`);
+            }
+        }),
+
+        vscode.commands.registerCommand('hc3vfs.renameDevice', async (uri?: vscode.Uri) => {
+            const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+            if (!target || target.scheme !== 'hc3') {
+                vscode.window.showWarningMessage('HC3: no HC3 folder selected.');
+                return;
+            }
+            if (!activeClient) {
+                vscode.window.showWarningMessage('HC3: not connected.');
+                return;
+            }
+            const parts = target.path.split('/').filter(Boolean);
+            const m     = parts[0]?.match(/^(\d+)-(.+)/);
+            if (!m) { vscode.window.showWarningMessage('HC3: select a QuickApp folder to rename.'); return; }
+            const deviceId   = parseInt(m[1], 10);
+            const currentDev = provider?.getCachedDevice(deviceId);
+
+            const newName = await vscode.window.showInputBox({
+                title:         'Rename QuickApp',
+                prompt:        'New name for the QuickApp on the HC3',
+                value:         currentDev?.name ?? '',
+                validateInput: v => v.trim() ? undefined : 'Name cannot be empty',
+            });
+            if (!newName) { return; }
+
+            try {
+                await activeClient.renameDevice(deviceId, newName.trim());
+                provider?.refresh();
+                codeLensProvider?.invalidate();
+                vscode.window.showInformationMessage(`QuickApp renamed to "${newName.trim()}".`);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`HC3 rename failed: ${msg}`);
             }
         }),
     );

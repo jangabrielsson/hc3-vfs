@@ -48,12 +48,28 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
     private readonly _emitter = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
     readonly onDidChangeFile: vscode.Event<vscode.FileChangeEvent[]> = this._emitter.event;
 
+    /** Fires when decorations should be refreshed (refresh or after writes). */
+    readonly onDidChangeDecorations = new vscode.EventEmitter<vscode.Uri[]>();
+
+    /** Called after each writeFile with success/failure result. */
+    onSaveResult: ((uri: vscode.Uri, error?: Error) => void) | undefined;
+
     private _devicesCache: CacheEntry<QaDevice[]> | undefined;
     private _filesCache   = new Map<number, CacheEntry<QaFile[]>>();
     // Cached meta (sans content) by device → file name
     private _fileMeta     = new Map<number, Map<string, QaFile>>();
 
     constructor(private readonly client: Hc3Client) {}
+
+    /** Look up a device from the cache (undefined if not yet loaded). */
+    getCachedDevice(id: number): QaDevice | undefined {
+        return this._devicesCache?.data.find(d => d.id === id);
+    }
+
+    /** Look up file metadata from the cache (undefined if not yet loaded). */
+    getCachedFileMeta(deviceId: number, apiName: string): QaFile | undefined {
+        return this._fileMeta.get(deviceId)?.get(apiName);
+    }
 
     // -------- cache helpers --------
 
@@ -89,6 +105,7 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             type: vscode.FileChangeType.Changed,
             uri: vscode.Uri.parse('hc3:///'),
         }]);
+        this.onDidChangeDecorations.fire([]);
     }
 
     // -------- FileSystemProvider interface --------
@@ -205,19 +222,25 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
 
         const contentStr = Buffer.from(content).toString('utf-8');
 
-        if (!existing) {
-            // Create an empty file first, then write content into it
-            const created = await this.client.createFile(id, name);
-            await this.client.writeFile(id, { ...created, content: contentStr });
-            // Invalidate file list cache for this device
-            this._filesCache.delete(id);
-            this._fileMeta.delete(id);
-            this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
-        } else {
-            // Preserve all existing metadata, only update content
-            const meta = this._fileMeta.get(id)?.get(name) ?? existing;
-            await this.client.writeFile(id, { ...meta, content: contentStr });
-            this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+        try {
+            if (!existing) {
+                // Create an empty file first, then write content into it
+                const created = await this.client.createFile(id, name);
+                await this.client.writeFile(id, { ...created, content: contentStr });
+                // Invalidate file list cache for this device
+                this._filesCache.delete(id);
+                this._fileMeta.delete(id);
+                this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
+            } else {
+                // Preserve all existing metadata, only update content
+                const meta = this._fileMeta.get(id)?.get(name) ?? existing;
+                await this.client.writeFile(id, { ...meta, content: contentStr });
+                this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+            }
+            this.onSaveResult?.(uri);
+        } catch (err) {
+            this.onSaveResult?.(uri, err instanceof Error ? err : new Error(String(err)));
+            throw err;
         }
     }
 

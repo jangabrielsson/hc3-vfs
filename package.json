@@ -24,6 +24,10 @@
   "engines": {
     "vscode": "^1.80.0"
   },
+  "enabledApiProposals": [
+    "fileSearchProvider",
+    "textSearchProvider"
+  ],
   "categories": [
     "Other"
   ],
@@ -47,37 +51,37 @@
     "commands": [
       {
         "command": "hc3vfs.connect",
-        "title": "HC3: Connect",
+        "title": "Connect",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.configure",
-        "title": "HC3: Configure Credentials",
+        "title": "Configure Credentials",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.refresh",
-        "title": "HC3: Refresh",
+        "title": "Refresh",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.disconnect",
-        "title": "HC3: Disconnect",
+        "title": "Disconnect",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.openInBrowser",
-        "title": "HC3: Open in HC3 Web UI",
+        "title": "Open in HC3 Web UI",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.exportFqa",
-        "title": "HC3: Export .fqa",
+        "title": "Export .fqa",
         "category": "HC3"
       },
       {
         "command": "hc3vfs.renameDevice",
-        "title": "HC3: Rename QuickApp",
+        "title": "Rename QuickApp",
         "category": "HC3"
       }
     ],

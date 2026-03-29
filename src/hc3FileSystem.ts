@@ -58,6 +58,8 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
     private _filesCache   = new Map<number, CacheEntry<QaFile[]>>();
     // Cached meta (sans content) by device → file name
     private _fileMeta     = new Map<number, Map<string, QaFile>>();
+    // Cached file content by device → api file name
+    private _contentCache = new Map<number, Map<string, CacheEntry<string>>>();
 
     constructor(private readonly client: Hc3Client) {}
 
@@ -100,6 +102,7 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         this._devicesCache = undefined;
         this._filesCache.clear();
         this._fileMeta.clear();
+        this._contentCache.clear();
         // Fire a change on a dummy URI to prompt VS Code to re-read the root
         this._emitter.fire([{
             type: vscode.FileChangeType.Changed,
@@ -180,8 +183,17 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
 
         const name = toApiName(parts[1]);
+        const now = Date.now();
+        const devContentCache = this._contentCache.get(id);
+        const cached = devContentCache?.get(name);
+        if (cached && now < cached.expiry) {
+            return Buffer.from(cached.data, 'utf-8');
+        }
         const file = await this.client.readFile(id, name);
-        return Buffer.from(file.content ?? '', 'utf-8');
+        const content = file.content ?? '';
+        if (!this._contentCache.has(id)) { this._contentCache.set(id, new Map()); }
+        this._contentCache.get(id)!.set(name, { data: content, expiry: now + CACHE_TTL_MS });
+        return Buffer.from(content, 'utf-8');
     }
 
     async writeFile(
@@ -230,11 +242,13 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
                 // Invalidate file list cache for this device
                 this._filesCache.delete(id);
                 this._fileMeta.delete(id);
+                this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
             } else {
                 // Preserve all existing metadata, only update content
                 const meta = this._fileMeta.get(id)?.get(name) ?? existing;
                 await this.client.writeFile(id, { ...meta, content: contentStr });
+                this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
             }
             this.onSaveResult?.(uri);
@@ -257,6 +271,7 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         await this.client.deleteFile(id, name);
         this._filesCache.delete(id);
         this._fileMeta.delete(id);
+        this._contentCache.delete(id);
         this._emitter.fire([{ type: vscode.FileChangeType.Deleted, uri }]);
     }
 

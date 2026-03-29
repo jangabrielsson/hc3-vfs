@@ -6,6 +6,7 @@ import { Hc3Client } from './hc3Client';
 import { Hc3FileSystemProvider } from './hc3FileSystem';
 import { Hc3DecorationProvider } from './hc3Decorations';
 import { Hc3CodeLensProvider } from './hc3CodeLens';
+import { Hc3FileSearchProvider, Hc3TextSearchProvider } from './hc3SearchProviders';
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
@@ -46,6 +47,19 @@ export function activate(context: vscode.ExtensionContext): void {
                     isReadonly: false,
                 })
             );
+
+            // Register search providers (proposed API)
+            const ws = vscode.workspace as any;
+            if (typeof ws.registerFileSearchProvider === 'function') {
+                context.subscriptions.push(
+                    ws.registerFileSearchProvider('hc3', new Hc3FileSearchProvider(p))
+                );
+            }
+            if (typeof ws.registerTextSearchProvider === 'function') {
+                context.subscriptions.push(
+                    ws.registerTextSearchProvider('hc3', new Hc3TextSearchProvider(p))
+                );
+            }
 
             // Register decoration provider
             context.subscriptions.push(

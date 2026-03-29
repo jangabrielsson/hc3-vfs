@@ -81,6 +81,7 @@ export class Hc3FileSearchProvider {
             for (const [fileName, fileType] of files) {
                 if (token.isCancellationRequested) { break; }
                 if (fileType !== vscode.FileType.File) { continue; }
+                if (fileName.endsWith('.hc3qa')) { continue; }
 
                 const fullRelPath = `${folderName}/${fileName}`;
                 if (!pattern || fullRelPath.toLowerCase().includes(pattern)) {
@@ -139,6 +140,7 @@ export class Hc3TextSearchProvider {
             for (const [fileName, fileType] of files) {
                 if (token.isCancellationRequested) { break; }
                 if (fileType !== vscode.FileType.File) { continue; }
+                if (fileName.endsWith('.hc3qa')) { continue; }
 
                 const fileUri = folderUri.with({ path: folderUri.path + '/' + fileName });
 

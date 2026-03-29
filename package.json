@@ -38,6 +38,7 @@
   "icon": "images/icon.png",
   "activationEvents": [
     "onFileSystem:hc3",
+    "onCustomEditor:hc3vfs.qaProperties",
     "onCommand:hc3vfs.connect",
     "onCommand:hc3vfs.configure",
     "onCommand:hc3vfs.refresh",
@@ -135,6 +136,16 @@
       {
         "scheme": "hc3",
         "authority": "*"
+      }
+    ],
+    "customEditors": [
+      {
+        "viewType": "hc3vfs.qaProperties",
+        "displayName": "QuickApp Properties",
+        "selector": [
+          { "filenamePattern": "*.hc3qa" }
+        ],
+        "priority": "default"
       }
     ]
   },

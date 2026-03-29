@@ -3,6 +3,9 @@ import { Hc3Client, QaDevice, QaFile } from './hc3Client';
 
 // ---------- helpers ----------
 
+/** Synthetic file shown at the top of every QA folder — opens the properties editor */
+const QA_PROPS_FILE = '(QuickApp).hc3qa';
+
 function slugify(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'device';
 }
@@ -136,10 +139,16 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
         }
 
-        // File: /<id>-<slug>/<filename>.lua
+        // File: /<id>-<slug>/<filename>.lua  OR  /<id>-<slug>/(QuickApp).hc3qa
         if (parts.length === 2) {
             const id = parseDeviceId(parts[0]);
             if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
+
+            // Synthetic properties file
+            if (parts[1] === QA_PROPS_FILE) {
+                return { type: vscode.FileType.File, ctime: 0, mtime: Date.now(), size: 0 };
+            }
+
             const name = toApiName(parts[1]);
             const files = await this.getFiles(id);
             const f = files.find(fl => fl.name === name);
@@ -164,12 +173,16 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             return devices.map(d => [qaFolderName(d), vscode.FileType.Directory]);
         }
 
-        // QA folder → list .lua files
+        // QA folder → list .lua files + synthetic properties file at top
         if (parts.length === 1) {
             const id = parseDeviceId(parts[0]);
             if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
             const files = await this.getFiles(id);
-            return files.map(f => [toVsName(f.name), vscode.FileType.File]);
+            const entries: [string, vscode.FileType][] = [
+                [QA_PROPS_FILE, vscode.FileType.File],
+                ...files.map(f => [toVsName(f.name), vscode.FileType.File] as [string, vscode.FileType]),
+            ];
+            return entries;
         }
 
         throw vscode.FileSystemError.FileNotFound(uri);
@@ -181,6 +194,12 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
 
         const id = parseDeviceId(parts[0]);
         if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
+
+        // Synthetic properties file — return full device JSON
+        if (parts[1] === QA_PROPS_FILE) {
+            const dev = await this.client.getDevice(id);
+            return Buffer.from(JSON.stringify(dev, null, 2), 'utf-8');
+        }
 
         const name = toApiName(parts[1]);
         const now = Date.now();
@@ -210,6 +229,10 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         const name = toApiName(parts[1]);
 
         if (options.create) {
+            // .hc3qa is a synthetic file, not createable by the user
+            if (name === QA_PROPS_FILE || parts[1] === QA_PROPS_FILE) {
+                throw vscode.FileSystemError.NoPermissions(uri);
+            }
             if (name.length < 3) {
                 throw vscode.FileSystemError.NoPermissions(
                     `File name "${name}" is too short — HC3 file names must be at least 3 characters.`
@@ -272,6 +295,13 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
         const name = toApiName(parts[1]);
 
+        // Synthetic properties file cannot be deleted
+        if (parts[1] === QA_PROPS_FILE) {
+            throw vscode.FileSystemError.NoPermissions(
+                `Cannot delete "${QA_PROPS_FILE}" — it is a virtual file managed by the extension.`
+            );
+        }
+
         // The HC3 API does not allow deleting the main file
         const files = await this.getFiles(id);
         const f = files.find(fl => fl.name === name);
@@ -315,6 +345,13 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
 
         const oldName = toApiName(oldParts[1]);
         const newName = toApiName(newParts[1]);
+
+        // Synthetic properties file cannot be renamed
+        if (oldParts[1] === QA_PROPS_FILE || newParts[1] === QA_PROPS_FILE) {
+            throw vscode.FileSystemError.NoPermissions(
+                `Cannot rename "${QA_PROPS_FILE}" — it is a virtual file managed by the extension.`
+            );
+        }
 
         if (oldName === newName) { return; }
 

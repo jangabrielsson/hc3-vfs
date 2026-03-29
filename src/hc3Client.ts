@@ -2,11 +2,28 @@ import * as http from 'http';
 import * as https from 'https';
 import { URL } from 'url';
 
+export interface QaVariable {
+    name: string;
+    value: string | number | boolean;
+    type?: string;
+}
+
 export interface QaDevice {
     id: number;
     name: string;
     type: string;
+    baseType?: string;
     roomID?: number;
+    enabled?: boolean;
+    visible?: boolean;
+    interfaces?: string[];
+    created?: number;
+    modified?: number;
+    properties?: {
+        quickAppVariables?: QaVariable[];
+        userDescription?: string;
+        [key: string]: unknown;
+    };
 }
 
 export interface QaFile {
@@ -195,10 +212,13 @@ export class Hc3Client {
     }
 
     /** GET /api/devices/{id} — get full device details including properties */
-    getDevice(deviceId: number): Promise<QaDevice & { properties: Record<string, unknown> }> {
-        return this.request<QaDevice & { properties: Record<string, unknown> }>(
-            'GET', `/api/devices/${deviceId}`
-        );
+    getDevice(deviceId: number): Promise<QaDevice> {
+        return this.request<QaDevice>('GET', `/api/devices/${deviceId}`);
+    }
+
+    /** PUT /api/devices/{id} — update device fields (name, enabled, visible, properties) */
+    updateDevice(deviceId: number, changes: Partial<QaDevice>): Promise<void> {
+        return this.request<void>('PUT', `/api/devices/${deviceId}`, changes);
     }
 
     /** GET /api/debugMessages?from={from} — fetch debug log entries after a given message id */

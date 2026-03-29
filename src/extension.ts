@@ -9,6 +9,7 @@ import { Hc3CodeLensProvider } from './hc3CodeLens';
 import { Hc3FileSearchProvider, Hc3TextSearchProvider } from './hc3SearchProviders';
 import { Hc3LogPoller } from './hc3LogPoller';
 import { Hc3BrowserProxy } from './hc3BrowserProxy';
+import { QaPropertiesEditorProvider } from './hc3QaEditor';
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
@@ -24,6 +25,16 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusBarItem.command = 'hc3vfs.refresh';
     context.subscriptions.push(statusBarItem);
+
+    // Register the QuickApp properties custom editor (must be registered early,
+    // before any .hc3qa file is opened, so the activation event can pick it up)
+    context.subscriptions.push(
+        vscode.window.registerCustomEditorProvider(
+            QaPropertiesEditorProvider.viewType,
+            new QaPropertiesEditorProvider(context, () => activeClient),
+            { webviewOptions: { retainContextWhenHidden: true } }
+        )
+    );
 
     /**
      * Lazily creates the client + provider on first use.

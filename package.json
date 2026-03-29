@@ -116,6 +116,12 @@
           "type": "string",
           "default": "admin",
           "description": "HC3 username. Overridden by HC3_USER in .env."
+        },
+        "hc3vfs.logPollInterval": {
+          "type": "number",
+          "default": 4,
+          "minimum": 1,
+          "description": "How often (in seconds) to poll the HC3 debug log output channel."
         }
       }
     },

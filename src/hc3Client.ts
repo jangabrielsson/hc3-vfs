@@ -17,6 +17,14 @@ export interface QaFile {
     content?: string;
 }
 
+export interface DebugMessage {
+    id: number;
+    timestamp: number;
+    type: string;
+    tag: string;
+    message: string;
+}
+
 export class Hc3Client {
     private readonly authHeader: string;
     private readonly baseUrl: string;
@@ -157,6 +165,13 @@ export class Hc3Client {
     getDevice(deviceId: number): Promise<QaDevice & { properties: Record<string, unknown> }> {
         return this.request<QaDevice & { properties: Record<string, unknown> }>(
             'GET', `/api/devices/${deviceId}`
+        );
+    }
+
+    /** GET /api/debugMessages?from={from} — fetch debug log entries after a given message id */
+    getDebugMessages(from: number): Promise<{ messages: DebugMessage[] }> {
+        return this.request<{ messages: DebugMessage[] }>(
+            'GET', `/api/debugMessages?from=${from}`
         );
     }
 

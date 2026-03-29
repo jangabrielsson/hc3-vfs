@@ -7,6 +7,7 @@ import { Hc3FileSystemProvider } from './hc3FileSystem';
 import { Hc3DecorationProvider } from './hc3Decorations';
 import { Hc3CodeLensProvider } from './hc3CodeLens';
 import { Hc3FileSearchProvider, Hc3TextSearchProvider } from './hc3SearchProviders';
+import { Hc3LogPoller } from './hc3LogPoller';
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
@@ -14,6 +15,7 @@ let statusBarItem: vscode.StatusBarItem;
 let activeClient: Hc3Client | undefined;
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 let codeLensProvider: Hc3CodeLensProvider | undefined;
+let logPoller: Hc3LogPoller | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -84,6 +86,13 @@ export function activate(context: vscode.ExtensionContext): void {
             };
 
             provider = p;
+
+            // ── Debug log polling ─────────────────────────────────────────────
+            if (!logPoller) {
+                logPoller = new Hc3LogPoller();
+                context.subscriptions.push(logPoller);
+            }
+            logPoller.start(client);
 
             // ── Connection polling ────────────────────────────────────────────
             if (pollTimer) { clearInterval(pollTimer); }
@@ -193,6 +202,7 @@ export function activate(context: vscode.ExtensionContext): void {
             // Reset provider so the next connect uses the new credentials
             provider = undefined;
             providerPromise = undefined;
+            logPoller?.stop();
 
             vscode.window.showInformationMessage(
                 'HC3 credentials saved. Run "HC3: Connect" to open the filesystem.'
@@ -218,6 +228,7 @@ export function activate(context: vscode.ExtensionContext): void {
             providerPromise = undefined;
             activeClient = undefined;
             codeLensProvider = undefined;
+            logPoller?.stop();
             if (pollTimer) { clearInterval(pollTimer); pollTimer = undefined; }
             statusBarItem.hide();
         }),

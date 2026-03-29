@@ -1,11 +1,27 @@
 {
   "name": "hc3-vfs",
   "displayName": "Fibaro HC3 Virtual Filesystem",
-  "description": "Browse and edit HC3 QuickApp files directly in the VS Code Explorer",
+  "description": "Browse and edit HC3 QuickApp Lua files directly in the VS Code Explorer via a virtual filesystem",
   "version": "0.1.0",
-  "publisher": "fibaro",
+  "publisher": "GsonSoft-development",
+  "author": "Jan Gabrielsson",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jangabrielsson/hc3-vfs.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jangabrielsson/hc3-vfs/issues"
+  },
+  "homepage": "https://github.com/jangabrielsson/hc3-vfs#readme",
+  "keywords": ["fibaro", "hc3", "quickapp", "lua", "home automation"],
   "engines": { "vscode": "^1.80.0" },
   "categories": ["Other"],
+  "galleryBanner": {
+    "color": "#1a3878",
+    "theme": "dark"
+  },
+  "icon": "images/icon.png",
   "activationEvents": [
     "onFileSystem:hc3",
     "onCommand:hc3vfs.connect",
@@ -56,11 +72,13 @@
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -watch -p .",
-    "package": "vsce package"
+    "package": "vsce package",
+    "publish": "vsce publish"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.80.0",
+    "@vscode/vsce": "^3.0.0",
     "typescript": "^5.0.0"
   }
 }

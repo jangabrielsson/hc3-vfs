@@ -2,7 +2,7 @@
   "name": "hc3-vfs",
   "displayName": "Fibaro HC3 Virtual Filesystem",
   "description": "Browse and edit HC3 QuickApp Lua files directly in the VS Code Explorer via a virtual filesystem",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "publisher": "GsonSoft-development",
   "author": "Jan Gabrielsson",
   "license": "MIT",
@@ -85,17 +85,17 @@
       "explorer/context": [
         {
           "command": "hc3vfs.openInBrowser",
-          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^/\\d+/",
           "group": "navigation@1"
         },
         {
           "command": "hc3vfs.exportFqa",
-          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^/\\d+/",
           "group": "navigation@2"
         },
         {
           "command": "hc3vfs.renameDevice",
-          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^\/\\d+/",
+          "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^/\\d+/",
           "group": "navigation@3"
         }
       ]

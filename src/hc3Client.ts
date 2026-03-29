@@ -65,7 +65,11 @@ export class Hc3Client {
                     const raw = Buffer.concat(chunks).toString('utf-8');
                     const status = res.statusCode ?? 0;
                     if (status >= 400) {
-                        reject(new Error(`HC3 HTTP ${status}: ${raw}`));
+                        const hint =
+                            status === 401 ? ' — check your credentials' :
+                            status === 403 ? ' — HC3 user lacks write permission (admin role required)' :
+                            status === 404 ? ' — resource not found on HC3' : '';
+                        reject(new Error(`HC3 HTTP ${status}${hint}: ${raw}`));
                         return;
                     }
                     try {

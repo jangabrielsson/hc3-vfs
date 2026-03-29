@@ -238,16 +238,17 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             if (!existing) {
                 // Create an empty file first, then write content into it
                 const created = await this.client.createFile(id, name);
-                await this.client.writeFile(id, { ...created, content: contentStr });
+                await this.client.writeFile(id, { ...created, isOpen: true, content: contentStr });
                 // Invalidate file list cache for this device
                 this._filesCache.delete(id);
                 this._fileMeta.delete(id);
                 this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Created, uri }]);
             } else {
-                // Preserve all existing metadata, only update content
+                // Preserve all existing metadata, only update content.
+                // isOpen must be true or the HC3 rejects the PUT with 403.
                 const meta = this._fileMeta.get(id)?.get(name) ?? existing;
-                await this.client.writeFile(id, { ...meta, content: contentStr });
+                await this.client.writeFile(id, { ...meta, isOpen: true, content: contentStr });
                 this._contentCache.get(id)?.delete(name);
                 this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
             }
@@ -268,6 +269,15 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         if (id === undefined) { throw vscode.FileSystemError.FileNotFound(uri); }
         const name = toApiName(parts[1]);
 
+        // The HC3 API does not allow deleting the main file
+        const files = await this.getFiles(id);
+        const f = files.find(fl => fl.name === name);
+        if (f?.isMain) {
+            throw vscode.FileSystemError.NoPermissions(
+                `Cannot delete "${parts[1]}" — the main file of a QuickApp cannot be removed.`
+            );
+        }
+
         await this.client.deleteFile(id, name);
         this._filesCache.delete(id);
         this._fileMeta.delete(id);
@@ -282,10 +292,68 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         );
     }
 
-    rename(_oldUri: vscode.Uri, _newUri: vscode.Uri, _options: { readonly overwrite: boolean }): never {
-        // HC3 does not expose a rename endpoint for QuickApp files
-        throw vscode.FileSystemError.NoPermissions(
-            'Renaming HC3 QuickApp files is not supported by the HC3 API.'
-        );
+    async rename(
+        oldUri: vscode.Uri,
+        newUri: vscode.Uri,
+        options: { readonly overwrite: boolean }
+    ): Promise<void> {
+        const oldParts = oldUri.path.split('/').filter(Boolean);
+        const newParts = newUri.path.split('/').filter(Boolean);
+
+        // Only file-level renames within the same QuickApp are supported
+        if (oldParts.length !== 2 || newParts.length !== 2 || oldParts[0] !== newParts[0]) {
+            throw vscode.FileSystemError.NoPermissions(
+                'Renaming across QuickApps or renaming QuickApp folders is not supported.'
+            );
+        }
+
+        const id = parseDeviceId(oldParts[0]);
+        if (id === undefined) { throw vscode.FileSystemError.FileNotFound(oldUri); }
+
+        const oldName = toApiName(oldParts[1]);
+        const newName = toApiName(newParts[1]);
+
+        if (oldName === newName) { return; }
+
+        if (newName.length < 3 || !/^[a-zA-Z0-9]+$/.test(newName)) {
+            throw vscode.FileSystemError.NoPermissions(
+                `New file name "${newName}" is invalid — must be at least 3 alphanumeric characters.`
+            );
+        }
+
+        const files = await this.getFiles(id);
+        const src = files.find(f => f.name === oldName);
+        if (!src) { throw vscode.FileSystemError.FileNotFound(oldUri); }
+
+        if (src.isMain) {
+            throw vscode.FileSystemError.NoPermissions(
+                `Cannot rename "${oldParts[1]}" — the main file of a QuickApp cannot be renamed.`
+            );
+        }
+
+        const destExists = files.some(f => f.name === newName);
+        if (destExists && !options.overwrite) {
+            throw vscode.FileSystemError.FileExists(newUri);
+        }
+
+        // Fetch current content
+        const srcFile = await this.client.readFile(id, oldName);
+
+        // Create the new file and write content into it
+        const created = await this.client.createFile(id, newName);
+        await this.client.writeFile(id, { ...created, isOpen: true, content: srcFile.content ?? '' });
+
+        // Delete the old file
+        await this.client.deleteFile(id, oldName);
+
+        // Invalidate caches for this device
+        this._filesCache.delete(id);
+        this._fileMeta.delete(id);
+        this._contentCache.delete(id);
+
+        this._emitter.fire([
+            { type: vscode.FileChangeType.Deleted, uri: oldUri },
+            { type: vscode.FileChangeType.Created, uri: newUri },
+        ]);
     }
 }

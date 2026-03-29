@@ -46,7 +46,8 @@
     "onCommand:hc3vfs.openInBrowser",
     "onCommand:hc3vfs.exportFqa",
     "onCommand:hc3vfs.renameDevice",
-    "onCommand:hc3vfs.statistics"
+    "onCommand:hc3vfs.statistics",
+    "onCommand:hc3vfs.deleteFile"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -89,6 +90,11 @@
       {
         "command": "hc3vfs.statistics",
         "title": "Statistics",
+        "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.deleteFile",
+        "title": "Delete File",
         "category": "HC3"
       }
     ],

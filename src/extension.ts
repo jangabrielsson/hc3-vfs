@@ -371,6 +371,45 @@ export function activate(context: vscode.ExtensionContext): void {
             vscode.workspace.openTextDocument({ content: text, language: 'plaintext' })
                 .then(doc => vscode.window.showTextDocument(doc, { preview: true, preserveFocus: false }));
         }),
+
+        // hc3vfs.deleteFile — for agent/programmatic use; accepts a hc3:// URI string or Uri object.
+        // Agents can call: vscode.commands.executeCommand('hc3vfs.deleteFile', 'hc3://host/42-myapp/foo.lua')
+        vscode.commands.registerCommand('hc3vfs.deleteFile', async (uriArg?: vscode.Uri | string) => {
+            let target: vscode.Uri | undefined;
+            if (typeof uriArg === 'string') {
+                target = vscode.Uri.parse(uriArg);
+            } else if (uriArg instanceof vscode.Uri) {
+                target = uriArg;
+            } else {
+                target = vscode.window.activeTextEditor?.document.uri;
+            }
+
+            if (!target || target.scheme !== 'hc3') {
+                vscode.window.showWarningMessage('HC3: no HC3 file selected. Pass a hc3:// URI or open an HC3 file first.');
+                return;
+            }
+
+            if (!provider) {
+                vscode.window.showWarningMessage('HC3: not connected. Run "HC3: Connect" first.');
+                return;
+            }
+
+            const fileName = target.path.split('/').filter(Boolean).pop() ?? target.path;
+            const confirm = await vscode.window.showWarningMessage(
+                `Delete "${fileName}" from HC3?`,
+                { modal: true },
+                'Delete'
+            );
+            if (confirm !== 'Delete') { return; }
+
+            try {
+                await provider.delete(target, { recursive: false });
+                vscode.window.showInformationMessage(`Deleted "${fileName}" from HC3.`);
+            } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : String(err);
+                vscode.window.showErrorMessage(`HC3 delete failed: ${msg}`);
+            }
+        }),
     );
 }
 

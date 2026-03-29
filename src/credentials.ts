@@ -55,7 +55,7 @@ export async function getCredentials(context: vscode.ExtensionContext): Promise<
     const env = loadEnv();
     const cfg = vscode.workspace.getConfiguration('hc3vfs');
 
-    const rawUrl = env['HC3_URL'] ?? cfg.get<string>('host') ?? '';
+    const rawUrl = env['HC3_URL'] ?? env['HC3_HOST'] ?? cfg.get<string>('host') ?? '';
     const user   = env['HC3_USER'] ?? cfg.get<string>('user') ?? '';
     const password = env['HC3_PASSWORD'] ?? (await context.secrets.get('hc3vfs.password')) ?? '';
 

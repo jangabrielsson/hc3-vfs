@@ -8,6 +8,7 @@ Also supports opening local `.fqa` archive files as editable virtual filesystems
 - **QuickApps appear as folders** in the VS Code Explorer under an `HC3 — <host>` workspace folder
 - **Open any `.lua` file** — content is fetched live from the HC3
 - **Save to HC3 on `⌘S`** — the file is written back via the HC3 REST API instantly
+- **QuickApp properties editor** — each QuickApp folder contains a `(QuickApp).hc3qa` file; opening it shows a graphical editor for name, enabled/visible state, interfaces, QuickApp variables, and description. Changes are saved to the HC3 on `⌘S`
 - **Create new files** — new Lua files appear on the HC3 immediately
 - **Delete files** — removes the file from the HC3 (the main file of a QuickApp cannot be deleted)
 - **Rename files** — rename a non-main Lua file by pressing F2 or right-clicking in the Explorer (implemented as create + delete)
@@ -25,7 +26,7 @@ Also supports opening local `.fqa` archive files as editable virtual filesystems
 - **Edit Lua files inside the archive** — each Lua file appears as a `.lua` file in the folder; saving writes directly back into the `.fqa` JSON on disk
 - **Create and delete Lua files** — use the Explorer New File / Delete buttons as normal
 - **Rename Lua files** — press F2 or right-click → Rename in the Explorer
-- **Read-only metadata** — a synthetic `(QuickApp).json` file shows the QuickApp name, id, type, and initial properties but cannot be edited
+- **Properties editor** — a `(QuickApp).hc3qa` file in each fqa workspace folder opens the same graphical properties editor as the live HC3 connection; edit name, QuickApp variables, interfaces, and description, then save to write changes back to the on-disk `.fqa` file
 - **Persisted across sessions** — the `fqa://` workspace folder is remembered and reconnected automatically when you reopen VS Code
 
 ## Explorer tree examples
@@ -35,9 +36,11 @@ Also supports opening local `.fqa` archive files as editable virtual filesystems
 HC3 — 192.168.1.100
   ├── 42-living-room-lights/
   │     ├── main.lua
-  │     └── utils.lua
+  │     ├── utils.lua
+  │     └── (QuickApp).hc3qa   ← properties editor
   └── 55-weather-station/
-        └── main.lua
+        ├── main.lua
+        └── (QuickApp).hc3qa
 ```
 
 **Local .fqa archive:**
@@ -45,7 +48,7 @@ HC3 — 192.168.1.100
 📦 living-room-lights (42)
   ├── main.lua
   ├── utils.lua
-  └── (QuickApp).json   ← read-only metadata
+  └── (QuickApp).hc3qa   ← properties editor
 ```
 
 ## Getting started
@@ -132,7 +135,6 @@ Add this to your workspace `.vscode/settings.json`:
 - **No live refresh** — the HC3 has no push notifications. Use **HC3: Refresh** if you made changes outside VS Code
 - File names must be at least 3 characters and contain only `a-z`, `A-Z`, `0-9`
 - **"Preloaded files limit" warning** — VS Code indexes the virtual filesystem for search and IntelliSense. If you have many QuickApps you may see a warning that the 500-file preload limit has been reached. This is a VS Code limit; all files are still fully accessible, editable, and searchable. The warning can be safely ignored.
-- **`.fqa` metadata is read-only** — `(QuickApp).json` shows the current metadata but editing it has no effect. Use the HC3 web interface to change QuickApp properties.
 
 ## Related
 

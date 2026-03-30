@@ -1,11 +1,126 @@
 import * as vscode from 'vscode';
 import { Hc3Client, QaDevice, QaVariable } from './hc3Client';
 
-/**
- * Custom editor for *.hc3qa files — shows a properties panel for a QuickApp.
- * The underlying "document" is the JSON returned by GET /api/devices/{id}.
- * Saving calls PUT /api/devices/{id} with the changed fields.
- */
+// ---------- backend interface ----------
+
+interface QaEditorCapabilities {
+    /** Show the Enabled/Visible checkboxes (live HC3 device state — not meaningful for local .fqa templates). */
+    showEnabledVisible: boolean;
+    // Future: showUiView: boolean; showChildDevices: boolean; etc.
+}
+
+interface SaveMessage {
+    type: string;
+    name?: string;
+    enabled?: boolean;
+    visible?: boolean;
+    userDescription?: string;
+    quickAppVariables?: QaVariable[];
+    interfaces?: string[];
+}
+
+/** Decouples the shared webview UI from the underlying storage (HC3 REST API vs local .fqa file). */
+interface QaEditorBackend {
+    readonly capabilities: QaEditorCapabilities;
+    /** Persist changes. Resolves on success, rejects with an Error on failure. */
+    save(document: vscode.TextDocument, msg: SaveMessage): Promise<void>;
+}
+
+// ---------- HC3 backend (live REST API) ----------
+
+class Hc3QaBackend implements QaEditorBackend {
+    readonly capabilities: QaEditorCapabilities = { showEnabledVisible: true };
+
+    constructor(private readonly getClient: () => Hc3Client | undefined) {}
+
+    async save(document: vscode.TextDocument, msg: SaveMessage): Promise<void> {
+        const client = this.getClient();
+        if (!client) { throw new Error('Not connected to HC3.'); }
+
+        let dev: QaDevice;
+        try {
+            dev = JSON.parse(document.getText()) as QaDevice;
+        } catch {
+            throw new Error('Could not parse device data.');
+        }
+
+        const changes: Partial<QaDevice> = {};
+        if (msg.name !== undefined && msg.name !== dev.name) { changes.name = msg.name; }
+        if (msg.enabled !== undefined && msg.enabled !== dev.enabled) { changes.enabled = msg.enabled; }
+        if (msg.visible !== undefined && msg.visible !== dev.visible) { changes.visible = msg.visible; }
+        if (msg.interfaces !== undefined) {
+            const current = [...(dev.interfaces ?? [])].sort().join(',');
+            const updated = [...msg.interfaces].sort().join(',');
+            if (current !== updated) { changes.interfaces = msg.interfaces; }
+        }
+
+        const propChanges: QaDevice['properties'] = {};
+        let hasPropertyChange = false;
+        if (msg.quickAppVariables !== undefined) {
+            propChanges.quickAppVariables = msg.quickAppVariables;
+            hasPropertyChange = true;
+        }
+        if (msg.userDescription !== undefined && msg.userDescription !== (dev.properties?.userDescription ?? '')) {
+            propChanges.userDescription = msg.userDescription;
+            hasPropertyChange = true;
+        }
+        if (hasPropertyChange) { changes.properties = propChanges; }
+
+        if (Object.keys(changes).length === 0) { throw new Error('no-changes'); }
+
+        await client.updateDevice(dev.id, changes);
+
+        // Refresh document with latest data from HC3
+        const updated = await client.getDevice(dev.id);
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+            document.positionAt(0),
+            document.positionAt(document.getText().length)
+        );
+        edit.replace(document.uri, fullRange, JSON.stringify(updated, null, 2));
+        await vscode.workspace.applyEdit(edit);
+    }
+}
+
+// ---------- FQA backend (local .fqa file) ----------
+
+class FqaQaBackend implements QaEditorBackend {
+    readonly capabilities: QaEditorCapabilities = { showEnabledVisible: false };
+
+    async save(document: vscode.TextDocument, msg: SaveMessage): Promise<void> {
+        let dev: QaDevice;
+        try {
+            dev = JSON.parse(document.getText()) as QaDevice;
+        } catch {
+            throw new Error('Could not parse .fqa metadata.');
+        }
+
+        // Merge editable fields and write normalized JSON back to the document.
+        // The fqa FS provider's writeFile handler will merge it into the on-disk .fqa JSON.
+        const updated: QaDevice = {
+            ...dev,
+            name: msg.name ?? dev.name,
+            interfaces: msg.interfaces ?? dev.interfaces,
+            properties: {
+                ...dev.properties,
+                quickAppVariables: msg.quickAppVariables ?? dev.properties?.quickAppVariables,
+                userDescription: msg.userDescription ?? dev.properties?.userDescription,
+            },
+        };
+
+        const edit = new vscode.WorkspaceEdit();
+        const fullRange = new vscode.Range(
+            document.positionAt(0),
+            document.positionAt(document.getText().length)
+        );
+        edit.replace(document.uri, fullRange, JSON.stringify(updated, null, 2));
+        await vscode.workspace.applyEdit(edit);
+        await document.save();
+    }
+}
+
+// ---------- provider ----------
+
 export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvider {
 
     static readonly viewType = 'hc3vfs.qaProperties';
@@ -15,11 +130,19 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
         private readonly getClient: () => Hc3Client | undefined,
     ) {}
 
+    private _backendFor(document: vscode.TextDocument): QaEditorBackend {
+        return document.uri.scheme === 'fqa'
+            ? new FqaQaBackend()
+            : new Hc3QaBackend(this.getClient);
+    }
+
     async resolveCustomTextEditor(
         document: vscode.TextDocument,
         webviewPanel: vscode.WebviewPanel,
     ): Promise<void> {
         webviewPanel.webview.options = { enableScripts: true };
+
+        const backend = this._backendFor(document);
 
         const updateWebview = () => {
             let dev: QaDevice;
@@ -29,13 +152,11 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
                 webviewPanel.webview.html = `<html><body><p>Could not parse device data.</p></body></html>`;
                 return;
             }
-            webviewPanel.webview.html = this._buildHtml(webviewPanel.webview, dev);
+            webviewPanel.webview.html = this._buildHtml(webviewPanel.webview, dev, backend.capabilities);
         };
 
-        // Initial render
         updateWebview();
 
-        // Re-render if the underlying document changes
         const changeSubscription = vscode.workspace.onDidChangeTextDocument(e => {
             if (e.document.uri.toString() === document.uri.toString()) {
                 updateWebview();
@@ -43,96 +164,25 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
         });
         webviewPanel.onDidDispose(() => changeSubscription.dispose());
 
-        // Handle messages from the webview
-        webviewPanel.webview.onDidReceiveMessage(async (msg: {
-            type: string;
-            name?: string;
-            enabled?: boolean;
-            visible?: boolean;
-            userDescription?: string;
-            quickAppVariables?: QaVariable[];
-            interfaces?: string[];
-        }) => {
+        webviewPanel.webview.onDidReceiveMessage(async (msg: SaveMessage) => {
             if (msg.type !== 'save') { return; }
-
-            const client = this.getClient();
-            if (!client) {
-                vscode.window.showErrorMessage('HC3: not connected.');
-                return;
-            }
-
-            let dev: QaDevice;
             try {
-                dev = JSON.parse(document.getText()) as QaDevice;
-            } catch {
-                vscode.window.showErrorMessage('HC3: could not parse device data.');
-                return;
-            }
-
-            const changes: Partial<QaDevice> = {};
-            if (msg.name !== undefined && msg.name !== dev.name) {
-                changes.name = msg.name;
-            }
-            if (msg.enabled !== undefined && msg.enabled !== dev.enabled) {
-                changes.enabled = msg.enabled;
-            }
-            if (msg.visible !== undefined && msg.visible !== dev.visible) {
-                changes.visible = msg.visible;
-            }
-            if (msg.interfaces !== undefined) {
-                // Always send interfaces — order may differ, compare by sorted content
-                const current = [...(dev.interfaces ?? [])].sort().join(',');
-                const updated = [...msg.interfaces].sort().join(',');
-                if (current !== updated) {
-                    changes.interfaces = msg.interfaces;
-                }
-            }
-
-            // quickAppVariables and userDescription live inside properties
-            const newVars = msg.quickAppVariables;
-            const newDesc = msg.userDescription;
-            const propChanges: QaDevice['properties'] = {};
-            let hasPropertyChange = false;
-            if (newVars !== undefined) {
-                propChanges.quickAppVariables = newVars;
-                hasPropertyChange = true;
-            }
-            if (newDesc !== undefined && newDesc !== (dev.properties?.userDescription ?? '')) {
-                propChanges.userDescription = newDesc;
-                hasPropertyChange = true;
-            }
-            if (hasPropertyChange) {
-                changes.properties = propChanges;
-            }
-
-            if (Object.keys(changes).length === 0) {
-                vscode.window.showInformationMessage('HC3: no changes to save.');
-                return;
-            }
-
-            try {
-                await client.updateDevice(dev.id, changes);
-
-                // Refresh the document with updated data from HC3
-                const updated = await client.getDevice(dev.id);
-                const edit = new vscode.WorkspaceEdit();
-                const fullRange = new vscode.Range(
-                    document.positionAt(0),
-                    document.positionAt(document.getText().length)
-                );
-                edit.replace(document.uri, fullRange, JSON.stringify(updated, null, 2));
-                await vscode.workspace.applyEdit(edit);
-
+                await backend.save(document, msg);
                 webviewPanel.webview.postMessage({ type: 'saved' });
             } catch (err) {
+                if (err instanceof Error && err.message === 'no-changes') {
+                    vscode.window.showInformationMessage('HC3: no changes to save.');
+                    webviewPanel.webview.postMessage({ type: 'saved' });
+                    return;
+                }
                 const msg2 = err instanceof Error ? err.message : String(err);
-                vscode.window.showErrorMessage(`HC3 save failed: ${msg2}`);
+                vscode.window.showErrorMessage(`Save failed: ${msg2}`);
                 webviewPanel.webview.postMessage({ type: 'error', message: msg2 });
             }
         });
     }
 
-    private _buildHtml(_webview: vscode.Webview, dev: QaDevice): string {
+    private _buildHtml(_webview: vscode.Webview, dev: QaDevice, capabilities: QaEditorCapabilities): string {
         const vars: QaVariable[] = dev.properties?.quickAppVariables ?? [];
         const userDesc = dev.properties?.userDescription ?? '';
         const interfaces = dev.interfaces ?? [];
@@ -213,11 +263,11 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
   <input type="text" id="qa-name" value="${escAttr(dev.name)}" />
 </div>
 
-<div class="section">
+${capabilities.showEnabledVisible ? `<div class="section">
   <div class="section-label">State</div>
   <label><input type="checkbox" id="qa-enabled" ${dev.enabled ? 'checked' : ''} /> Enabled</label>
   <label><input type="checkbox" id="qa-visible" ${dev.visible ? 'checked' : ''} /> Visible in dashboard</label>
-</div>
+</div>` : ''}
 
 <div class="section">
   <div class="section-label">Description</div>
@@ -248,6 +298,7 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
 <script nonce="${nonce}">
 (function() {
     const vscode = acquireVsCodeApi();
+    const caps = ${JSON.stringify(capabilities)};
     let vars = ${JSON.stringify(vars)};
     let ifaces = ${JSON.stringify(interfaces)};
 
@@ -325,15 +376,18 @@ export class QaPropertiesEditorProvider implements vscode.CustomTextEditorProvid
             type: v.type,
         }));
 
-        vscode.postMessage({
+        const saveMsg = {
             type: 'save',
             name: document.getElementById('qa-name').value,
-            enabled: document.getElementById('qa-enabled').checked,
-            visible: document.getElementById('qa-visible').checked,
             userDescription: document.getElementById('qa-desc').value,
             quickAppVariables: currentVars,
             interfaces: ifaces,
-        });
+        };
+        if (caps.showEnabledVisible) {
+            saveMsg.enabled = document.getElementById('qa-enabled').checked;
+            saveMsg.visible = document.getElementById('qa-visible').checked;
+        }
+        vscode.postMessage(saveMsg);
     });
 
     window.addEventListener('message', e => {

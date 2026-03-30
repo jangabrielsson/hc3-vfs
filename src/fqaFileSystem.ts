@@ -3,8 +3,8 @@ import * as fs from 'fs';
 
 // ---------- helpers ----------
 
-/** Synthetic read-only file showing QA metadata (all fields except `files`). */
-const QA_META_FILE = '(QuickApp).json';
+/** Synthetic file opening the shared QuickApp properties editor. */
+const QA_META_FILE = '(QuickApp).hc3qa';
 
 /** Tells the Lua Language Server not to index this virtual workspace root. */
 const LUARC_FILE = '.luarc.json';
@@ -32,6 +32,8 @@ interface FqaDoc {
     name?: string;
     type?: string;
     id?: number;
+    initialProperties?: Record<string, unknown>;
+    initialInterfaces?: string[];
     files: FqaFileEntry[];
     [key: string]: unknown;
 }
@@ -135,12 +137,17 @@ export class FqaFileSystemProvider implements vscode.FileSystemProvider {
             // Synthetic metadata file
             if (parts[0] === QA_META_FILE) {
                 const doc = this._readDoc(uri.authority);
-                const { files: _f, ...meta } = doc;
+                const initProps = doc.initialProperties ?? {};
+                const normalized = {
+                    id: doc.id ?? 0, name: doc.name ?? '', type: doc.type ?? '',
+                    interfaces: doc.initialInterfaces ?? [],
+                    properties: { quickAppVariables: initProps.quickAppVariables ?? [], userDescription: initProps.userDescription ?? '' },
+                };
                 return {
                     type: vscode.FileType.File,
                     ctime: 0,
                     mtime: Date.now(),
-                    size: Buffer.byteLength(JSON.stringify(meta, null, 2), 'utf-8'),
+                    size: Buffer.byteLength(JSON.stringify(normalized, null, 2), 'utf-8'),
                 };
             }
 
@@ -183,8 +190,18 @@ export class FqaFileSystemProvider implements vscode.FileSystemProvider {
 
         if (parts[0] === QA_META_FILE) {
             const doc = this._readDoc(uri.authority);
-            const { files: _f, ...meta } = doc;
-            return Buffer.from(JSON.stringify(meta, null, 2), 'utf-8');
+            const initProps = doc.initialProperties ?? {};
+            const normalized = {
+                id: doc.id ?? 0,
+                name: doc.name ?? '',
+                type: doc.type ?? '',
+                interfaces: doc.initialInterfaces ?? [],
+                properties: {
+                    quickAppVariables: initProps.quickAppVariables ?? [],
+                    userDescription: (initProps.userDescription ?? '') as string,
+                },
+            };
+            return Buffer.from(JSON.stringify(normalized, null, 2), 'utf-8');
         }
 
         const name = toApiName(parts[0]);
@@ -203,7 +220,28 @@ export class FqaFileSystemProvider implements vscode.FileSystemProvider {
         if (parts.length !== 1) { throw vscode.FileSystemError.NoPermissions(uri); }
 
         if (parts[0] === QA_META_FILE) {
-            throw vscode.FileSystemError.NoPermissions(`"${QA_META_FILE}" is read-only.`);
+            // The webview editor writes normalized QaDevice-like JSON back here.
+            // Merge only the editable fields into the on-disk .fqa document.
+            let incoming: { name?: string; interfaces?: string[]; properties?: { quickAppVariables?: unknown[]; userDescription?: string } };
+            try {
+                incoming = JSON.parse(Buffer.from(content).toString('utf-8'));
+            } catch {
+                throw vscode.FileSystemError.NoPermissions(`"${QA_META_FILE}": invalid JSON`);
+            }
+            const doc = this._readDoc(uri.authority);
+            if (incoming.name !== undefined) { doc.name = incoming.name; }
+            if (incoming.interfaces !== undefined) { doc.initialInterfaces = incoming.interfaces; }
+            const initProps: Record<string, unknown> = doc.initialProperties ?? {};
+            if (incoming.properties?.quickAppVariables !== undefined) {
+                initProps.quickAppVariables = incoming.properties.quickAppVariables;
+            }
+            if (incoming.properties?.userDescription !== undefined) {
+                initProps.userDescription = incoming.properties.userDescription;
+            }
+            doc.initialProperties = initProps;
+            this._writeDoc(uri.authority, doc);
+            this._emitter.fire([{ type: vscode.FileChangeType.Changed, uri }]);
+            return;
         }
 
         const name = toApiName(parts[0]);

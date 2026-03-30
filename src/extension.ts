@@ -10,6 +10,9 @@ import { Hc3FileSearchProvider, Hc3TextSearchProvider } from './hc3SearchProvide
 import { Hc3LogPoller } from './hc3LogPoller';
 import { Hc3BrowserProxy } from './hc3BrowserProxy';
 import { QaPropertiesEditorProvider } from './hc3QaEditor';
+import { FqaFileSystemProvider } from './fqaFileSystem';
+
+let fqaProvider: FqaFileSystemProvider | undefined;
 
 let provider: Hc3FileSystemProvider | undefined;
 let providerPromise: Promise<Hc3FileSystemProvider> | undefined;
@@ -25,6 +28,25 @@ export function activate(context: vscode.ExtensionContext): void {
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusBarItem.command = 'hc3vfs.refresh';
     context.subscriptions.push(statusBarItem);
+
+    // ── .fqa filesystem provider (no credentials needed — register unconditionally) ──
+    fqaProvider = new FqaFileSystemProvider();
+    context.subscriptions.push(
+        vscode.workspace.registerFileSystemProvider('fqa', fqaProvider, {
+            isCaseSensitive: true,
+            isReadonly: false,
+        })
+    );
+    // Re-register any fqa:// workspace folders persisted from a previous session.
+    // The authority IS the base64url-encoded disk path, so no extra storage is needed.
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        if (folder.uri.scheme === 'fqa') {
+            try {
+                const fqaPath = Buffer.from(folder.uri.authority, 'hex').toString('utf-8');
+                fqaProvider.register(fqaPath);
+            } catch { /* ignore malformed entries */ }
+        }
+    }
 
     // Register the QuickApp properties custom editor (must be registered early,
     // before any .hc3qa file is opened, so the activation event can pick it up)
@@ -161,6 +183,35 @@ export function activate(context: vscode.ExtensionContext): void {
             const msg = err instanceof Error ? err.message : String(err);
             vscode.window.showErrorMessage(`HC3 auto-connect failed: ${msg}`);
         });
+    }
+
+    // ── Suppress Lua LS scanning of virtual folders ───────────────────────────
+    // Apply to any virtual folders already in the workspace on startup
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+        if (folder.uri.scheme === 'hc3' || folder.uri.scheme === 'fqa') {
+            suppressLuaLsForVirtualFolder(folder.uri);
+        }
+    }
+    // Apply whenever a new virtual folder is added (timing-safe)
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeWorkspaceFolders(e => {
+            for (const folder of e.added) {
+                if (folder.uri.scheme === 'hc3' || folder.uri.scheme === 'fqa') {
+                    suppressLuaLsForVirtualFolder(folder.uri);
+                }
+            }
+        })
+    );
+
+    /**
+     * Tells the Lua Language Server to skip indexing a virtual workspace folder.
+     * Must be called from onDidChangeWorkspaceFolders (after folder is registered)
+     * so that WorkspaceFolder-scoped config update actually targets the right folder.
+     */
+    function suppressLuaLsForVirtualFolder(folderUri: vscode.Uri): void {
+        vscode.workspace.getConfiguration('Lua', folderUri)
+            .update('workspace.ignoreDir', ['**'], vscode.ConfigurationTarget.WorkspaceFolder)
+            .then(undefined, () => { /* Lua extension not installed — ignore */ });
     }
 
     // -------- Commands --------
@@ -409,6 +460,50 @@ export function activate(context: vscode.ExtensionContext): void {
                 const msg = err instanceof Error ? err.message : String(err);
                 vscode.window.showErrorMessage(`HC3 delete failed: ${msg}`);
             }
+        }),
+
+        // ── Open .fqa file as a browseable/editable virtual filesystem ────────
+        vscode.commands.registerCommand('hc3vfs.openFqa', async (uriArg?: vscode.Uri) => {
+            let fqaUri: vscode.Uri | undefined;
+            if (uriArg && uriArg.scheme === 'file' && uriArg.fsPath.endsWith('.fqa')) {
+                fqaUri = uriArg;
+            } else {
+                const picked = await vscode.window.showOpenDialog({
+                    canSelectMany: false,
+                    filters: { 'Fibaro QuickApp': ['fqa'] },
+                    title: 'Open .fqa File',
+                });
+                if (!picked || picked.length === 0) { return; }
+                fqaUri = picked[0];
+            }
+
+            const fsPath = fqaUri.fsPath;
+
+            // Parse name for the workspace folder label
+            let folderLabel = path.basename(fsPath, '.fqa');
+            try {
+                const raw = fs.readFileSync(fsPath, 'utf-8');
+                const doc = JSON.parse(raw);
+                if (doc.name) {
+                    folderLabel = doc.id !== undefined ? `${doc.name} (${doc.id})` : doc.name;
+                }
+            } catch { /* fall back to filename */ }
+
+            const authority = fqaProvider!.register(fsPath);
+            const rootUri   = vscode.Uri.parse(`fqa://${authority}/`);
+
+            const alreadyOpen = (vscode.workspace.workspaceFolders ?? [])
+                .some(f => f.uri.toString() === rootUri.toString());
+            if (alreadyOpen) {
+                vscode.window.showInformationMessage(`"${folderLabel}" is already open in the Explorer.`);
+                return;
+            }
+
+            const idx = vscode.workspace.workspaceFolders?.length ?? 0;
+            vscode.workspace.updateWorkspaceFolders(idx, 0, {
+                uri: rootUri,
+                name: `\uD83D\uDCE6 ${folderLabel}`,
+            });
         }),
     );
 }

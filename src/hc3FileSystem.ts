@@ -6,6 +6,10 @@ import { Hc3Client, QaDevice, QaFile } from './hc3Client';
 /** Synthetic file shown at the top of every QA folder — opens the properties editor */
 const QA_PROPS_FILE = '(QuickApp).hc3qa';
 
+/** Tells the Lua Language Server not to index this virtual workspace root. */
+const LUARC_FILE = '.luarc.json';
+const LUARC_CONTENT = JSON.stringify({ workspace: { ignoreDir: ['**'], maxPreload: 0 } }, null, 2);
+
 function slugify(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'device';
 }
@@ -129,6 +133,11 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
             return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
         }
 
+        // Synthetic Lua LS suppression file at root
+        if (parts.length === 1 && parts[0] === LUARC_FILE) {
+            return { type: vscode.FileType.File, ctime: 0, mtime: 0, size: Buffer.byteLength(LUARC_CONTENT) };
+        }
+
         // QuickApp folder: /<id>-<slug>/
         if (parts.length === 1) {
             const id = parseDeviceId(parts[0]);
@@ -170,7 +179,10 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
         // Root → list QuickApp folders
         if (parts.length === 0) {
             const devices = await this.getDevices();
-            return devices.map(d => [qaFolderName(d), vscode.FileType.Directory]);
+            return [
+                [LUARC_FILE, vscode.FileType.File],
+                ...devices.map(d => [qaFolderName(d), vscode.FileType.Directory] as [string, vscode.FileType]),
+            ];
         }
 
         // QA folder → list .lua files + synthetic properties file at top
@@ -190,6 +202,13 @@ export class Hc3FileSystemProvider implements vscode.FileSystemProvider {
 
     async readFile(uri: vscode.Uri): Promise<Uint8Array> {
         const parts = uri.path.split('/').filter(Boolean);
+        if (parts.length !== 2 && parts.length !== 1) { throw vscode.FileSystemError.FileNotFound(uri); }
+
+        // Synthetic Lua LS suppression file at root
+        if (parts.length === 1 && parts[0] === LUARC_FILE) {
+            return Buffer.from(LUARC_CONTENT, 'utf-8');
+        }
+
         if (parts.length !== 2) { throw vscode.FileSystemError.FileNotFound(uri); }
 
         const id = parseDeviceId(parts[0]);

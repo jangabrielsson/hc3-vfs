@@ -2,7 +2,7 @@
   "name": "hc3-vfs",
   "displayName": "Fibaro HC3 Virtual Filesystem",
   "description": "Browse and edit HC3 QuickApp Lua files directly in the VS Code Explorer via a virtual filesystem",
-  "version": "0.4.7",
+  "version": "0.4.8",
   "publisher": "GsonSoft-development",
   "author": "Jan Gabrielsson",
   "license": "MIT",
@@ -47,7 +47,9 @@
     "onCommand:hc3vfs.exportFqa",
     "onCommand:hc3vfs.renameDevice",
     "onCommand:hc3vfs.statistics",
-    "onCommand:hc3vfs.deleteFile"
+    "onCommand:hc3vfs.deleteFile",
+    "onFileSystem:fqa",
+    "onCommand:hc3vfs.openFqa"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -96,6 +98,11 @@
         "command": "hc3vfs.deleteFile",
         "title": "Delete File",
         "category": "HC3"
+      },
+      {
+        "command": "hc3vfs.openFqa",
+        "title": "Open .fqa File",
+        "category": "HC3"
       }
     ],
     "menus": {
@@ -114,6 +121,11 @@
           "command": "hc3vfs.renameDevice",
           "when": "resourceScheme == hc3 && explorerResourceIsFolder && resourcePath =~ /^/\\d+/",
           "group": "navigation@3"
+        },
+        {
+          "command": "hc3vfs.openFqa",
+          "when": "resourceExtname == .fqa && resourceScheme == file",
+          "group": "navigation"
         }
       ]
     },
@@ -141,6 +153,10 @@
     "fileSystemProviders": [
       {
         "scheme": "hc3",
+        "authority": "*"
+      },
+      {
+        "scheme": "fqa",
         "authority": "*"
       }
     ],

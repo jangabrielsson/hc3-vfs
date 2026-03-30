@@ -1,6 +1,7 @@
-# Fibaro HC3 Virtual Filesystem
+# HC3 Virtual Filesystem
 
-Browse and edit Fibaro HC3 QuickApp Lua files directly in the VS Code Explorer — no manual downloading or uploading.
+Browse and edit HC3 QuickApp Lua files directly in the VS Code Explorer — no manual downloading or uploading.
+Also supports opening local `.fqa` archive files as editable virtual filesystems.
 
 ## Features
 
@@ -18,8 +19,18 @@ Browse and edit Fibaro HC3 QuickApp Lua files directly in the VS Code Explorer �
 - **API traffic statistics** — run **HC3: Statistics** to see a breakdown of every API call made since connect, grouped by endpoint
 - **Credentials from `.env`** — reuses the same `HC3_URL`/`HC3_USER`/`HC3_PASSWORD` variables as [plua](https://github.com/jangabrielsson/plua), with a fallback to VS Code settings + SecretStorage
 
-## Explorer tree example
+### .fqa file browser
 
+- **Open any `.fqa` file** as a virtual workspace folder — right-click a `.fqa` file in the Explorer and choose **Open .fqa File**, or run **HC3: Open .fqa File** from the Command Palette
+- **Edit Lua files inside the archive** — each Lua file appears as a `.lua` file in the folder; saving writes directly back into the `.fqa` JSON on disk
+- **Create and delete Lua files** — use the Explorer New File / Delete buttons as normal
+- **Rename Lua files** — press F2 or right-click → Rename in the Explorer
+- **Read-only metadata** — a synthetic `(QuickApp).json` file shows the QuickApp name, id, type, and initial properties but cannot be edited
+- **Persisted across sessions** — the `fqa://` workspace folder is remembered and reconnected automatically when you reopen VS Code
+
+## Explorer tree examples
+
+**Live HC3 connection:**
 ```
 HC3 — 192.168.1.100
   ├── 42-living-room-lights/
@@ -27,6 +38,14 @@ HC3 — 192.168.1.100
   │     └── utils.lua
   └── 55-weather-station/
         └── main.lua
+```
+
+**Local .fqa archive:**
+```
+📦 living-room-lights (42)
+  ├── main.lua
+  ├── utils.lua
+  └── (QuickApp).json   ← read-only metadata
 ```
 
 ## Getting started
@@ -76,8 +95,11 @@ HH:MM:SS [DEBUG] [QUICKAPP1234] your message here
 | `HC3: Export .fqa` | Export the selected QuickApp as a `.fqa` archive |
 | `HC3: Rename QuickApp` | Rename the selected QuickApp on the HC3 |
 | `HC3: Statistics` | Show a breakdown of API calls made since connect |
+| `HC3: Open .fqa File` | Open a local `.fqa` file as a virtual workspace folder |
 
 `Open in HC3 Web UI`, `Export .fqa`, and `Rename QuickApp` are also available via right-click on a QuickApp folder in the Explorer.
+
+`Open .fqa File` is also available via right-click on any `.fqa` file in the Explorer.
 
 ## Settings
 
@@ -110,6 +132,7 @@ Add this to your workspace `.vscode/settings.json`:
 - **No live refresh** — the HC3 has no push notifications. Use **HC3: Refresh** if you made changes outside VS Code
 - File names must be at least 3 characters and contain only `a-z`, `A-Z`, `0-9`
 - **"Preloaded files limit" warning** — VS Code indexes the virtual filesystem for search and IntelliSense. If you have many QuickApps you may see a warning that the 500-file preload limit has been reached. This is a VS Code limit; all files are still fully accessible, editable, and searchable. The warning can be safely ignored.
+- **`.fqa` metadata is read-only** — `(QuickApp).json` shows the current metadata but editing it has no effect. Use the HC3 web interface to change QuickApp properties.
 
 ## Related
 
